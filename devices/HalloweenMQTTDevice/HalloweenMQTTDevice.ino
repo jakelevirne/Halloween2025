@@ -77,11 +77,12 @@ Arduino_GFX *gfx = new Arduino_ILI9488_18bit(bus, TFT_RESET, 1 /* rotation */, f
  * End of Arduino_GFX setting
  ******************************************************************************/
 
-int analogPin = A0;
+const int sensorPin = 18;
 volatile int sensorValue = 0;
-int previousSensorValue = 0;
 
 int displayLineCount = 0;
+unsigned long lastPublishTime = 0;
+#define PUBLISH_INTERVAL_MS 500  // Publish every 500ms
 
 // Four output pins are supported, named A, B, X, Y.
 // A and B are normally HIGH and go LOW when a message is received.
@@ -102,8 +103,8 @@ int AtimerCount, BtimerCount, XtimerCount, YtimerCount = 0;
 
 bool IRAM_ATTR TimerHandler0(void * timerNo)
 {
-	//timer interrupt reads the value of the analogPin every time the timer ticks
-  sensorValue = analogRead(analogPin);
+	//timer interrupt reads the value of the sensorPin every time the timer ticks
+  sensorValue = digitalRead(sensorPin);
 
   //and sets the diital pin HIGH if that message came in, and keeps it high for count cycles of this timer (i.e. count * TIMER0_INTERVAL_MS)
   if (AtimerCount > 0) {
@@ -156,6 +157,7 @@ void setup(void)
   digitalWrite(pinX, HIGH);
   pinMode(pinY, OUTPUT);
   digitalWrite(pinY, HIGH);
+  pinMode(sensorPin, INPUT_PULLDOWN);
   Serial.begin(115200);
   // Serial.setDebugOutput(true);
   // while(!Serial);
@@ -249,12 +251,13 @@ void onConnectionEstablished() {
 void loop()
 {
   client.loop();
-  
-  if (previousSensorValue != sensorValue) {
-    // print out the value you read:
+
+  unsigned long currentMillis = millis();
+  if (currentMillis - lastPublishTime >= PUBLISH_INTERVAL_MS) {
+    // Publish sensor value periodically
     Serial.println(sensorValue);
     client.publish("device/"+ mac + "/sensor", String(sensorValue));
-    previousSensorValue = sensorValue;
+    lastPublishTime = currentMillis;
   }
 
 }

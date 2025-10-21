@@ -1,2 +1,4 @@
 secrets.h
 /myenv/
+.DS_Store
+.specstory/
