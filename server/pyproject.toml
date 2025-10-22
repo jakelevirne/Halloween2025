@@ -1,8 +1,9 @@
 [project]
-name = "server"
+name = "halloween-server"
 version = "0.1.0"
-description = "Add your description here"
+description = "Halloween Haunted House MQTT Control Server"
 requires-python = ">=3.13"
 dependencies = [
-    "python-kasa>=0.10.2",
+    "paho-mqtt>=1.6.1",
+    "matplotlib>=3.8.0",
 ]

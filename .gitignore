@@ -1,4 +1,12 @@
 secrets.h
-/myenv/
 .DS_Store
 .specstory/
+
+# Python virtual environments (uv)
+server/.venv/
+*.pyc
+__pycache__/
+
+# Generated data and analysis outputs
+sensor_data_*.csv
+sensor_baseline_analysis.png
