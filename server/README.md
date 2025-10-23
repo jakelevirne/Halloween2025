@@ -96,14 +96,15 @@ uv run playSound.py sound/creepy-whistles-66703.mp3:3 --device UMC1820
 # Play multiple sounds simultaneously on different channels
 uv run playSound.py sound/sound1.mp3:1 sound/sound2.mp3:3 sound/sound3.mp3:5 --device UMC1820
 
-# Play up to 8 sounds at once
+# Play up to 8 sounds at once with volume normalization
 uv run playSound.py \
   sound/door.mp3:1 \
   sound/witch.mp3:2 \
   sound/scream.mp3:3 \
   sound/thunder.mp3:4 \
   sound/creepy.mp3:5 \
-  --device UMC1820
+  --device UMC1820 \
+  --normalize
 
 # Use default audio device
 uv run playSound.py sound/file.mp3:3
@@ -111,10 +112,14 @@ uv run playSound.py sound/file.mp3:3
 
 **Format:** `file.mp3:channel` (e.g., `sound/creepy.mp3:3`)
 
+**Options:**
+- `--normalize` or `-n`: Automatically equalize volume levels across all sounds (recommended when mixing multiple files)
+
 **How it works:**
 - Each audio file is routed to its designated channel
 - Shorter files are padded with silence to match the longest file
 - All sounds play simultaneously and stop when the longest one finishes
+- Volume normalization ensures all sounds have the same peak level (prevents some from being too quiet/loud)
 - Press Ctrl+C to stop playback gracefully
 
 ## Development

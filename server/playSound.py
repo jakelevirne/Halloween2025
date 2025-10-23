@@ -59,19 +59,22 @@ def find_device_by_name(name):
     return None
 
 
-def play_audio_to_channels(audio_specs, device=None):
+def play_audio_to_channels(audio_specs, device=None, normalize=False):
     """
     Play multiple audio files to specific output channels simultaneously.
 
     Args:
         audio_specs: List of (audio_file, channel) tuples
         device: Device name or index (None = default device)
+        normalize: If True, normalize all audio to the same peak level
     """
     if len(audio_specs) > 8:
         print(f"Warning: Maximum 8 simultaneous sounds supported. Using first 8.")
         audio_specs = audio_specs[:8]
 
     print(f"\nLoading {len(audio_specs)} audio file(s)...")
+    if normalize:
+        print("Volume normalization: ENABLED")
 
     # Load all audio files
     loaded_audio = []
@@ -122,6 +125,20 @@ def play_audio_to_channels(audio_specs, device=None):
                 audio['samples']
             )
             audio['sample_rate'] = max_sample_rate
+
+    # Normalize audio levels if requested
+    if normalize and loaded_audio:
+        print("\nNormalizing audio levels...")
+        target_peak = 0.9  # Target peak level (90% of max to avoid clipping)
+
+        for audio in loaded_audio:
+            current_peak = np.abs(audio['samples']).max()
+            if current_peak > 0:
+                # Calculate gain to reach target peak
+                gain = target_peak / current_peak
+                audio['samples'] = audio['samples'] * gain
+                print(f"  [{audio['channel']}] {audio['file']}")
+                print(f"      Peak: {current_peak:.3f} -> {target_peak:.3f} (gain: {gain:.2f}x)")
 
     # Find the longest audio duration
     max_length = max(len(audio['samples']) for audio in loaded_audio)
@@ -225,6 +242,12 @@ Examples:
     )
 
     parser.add_argument(
+        '--normalize', '-n',
+        action='store_true',
+        help='Normalize audio levels to equalize volume across all sounds'
+    )
+
+    parser.add_argument(
         '--list', '-l',
         action='store_true',
         help='List all available audio devices'
@@ -267,7 +290,7 @@ Examples:
 
     # Play audio
     try:
-        play_audio_to_channels(audio_specs, device=args.device)
+        play_audio_to_channels(audio_specs, device=args.device, normalize=args.normalize)
     except Exception as e:
         print(f"Error: {e}")
         import traceback
