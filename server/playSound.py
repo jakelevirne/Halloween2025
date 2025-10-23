@@ -21,9 +21,18 @@ Usage:
 
 import sys
 import argparse
+import signal
 import numpy as np
 import sounddevice as sd
 import soundfile as sf
+
+
+def signal_handler(sig, frame):
+    """Handle Ctrl+C gracefully."""
+    print("\n\nPlayback interrupted by user")
+    sd.stop()  # Stop any playing audio
+    print("Audio stopped. Exiting...")
+    sys.exit(0)
 
 
 def list_audio_devices():
@@ -108,6 +117,10 @@ def play_audio_to_channel(audio_file, channel=3, device=None):
         return
 
     print(f"\nPlaying on channel {channel}...")
+    print("Press Ctrl+C to stop playback")
+
+    # Set up signal handler for graceful interruption
+    signal.signal(signal.SIGINT, signal_handler)
 
     # Create multi-channel output array
     # All channels silent except the target channel
@@ -118,10 +131,15 @@ def play_audio_to_channel(audio_file, channel=3, device=None):
     output[:, channel - 1] = samples
 
     # Play audio
-    sd.play(output, samplerate=sample_rate, device=device_idx)
-    sd.wait()  # Wait for playback to finish
-
-    print("Playback complete!")
+    try:
+        sd.play(output, samplerate=sample_rate, device=device_idx)
+        sd.wait()  # Wait for playback to finish
+        print("\nPlayback complete!")
+    except KeyboardInterrupt:
+        # This might not be reached due to signal handler, but just in case
+        sd.stop()
+        print("\nPlayback interrupted")
+        sys.exit(0)
 
 
 def main():
