@@ -6,4 +6,6 @@ requires-python = ">=3.13"
 dependencies = [
     "paho-mqtt>=1.6.1",
     "matplotlib>=3.8.0",
+    "sounddevice>=0.5.3",
+    "soundfile>=0.13.1",
 ]

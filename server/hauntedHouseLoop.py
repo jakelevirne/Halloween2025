@@ -8,6 +8,7 @@
 import asyncio
 import time
 import paho.mqtt.client as mqtt
+from paho.mqtt.client import CallbackAPIVersion
 import random
 
 # Constants for device names
@@ -33,7 +34,7 @@ queues = {
 
 # Define MQTT parameters
 mqtt_broker = "192.168.86.2"
-client = mqtt.Client("server")
+client = mqtt.Client(CallbackAPIVersion.VERSION2, client_id="server")
 client.connect(mqtt_broker)
 
 # Function to publish MQTT events
@@ -42,7 +43,7 @@ def publish_event(topic, message):
     print(f"Published event: {message} to topic {topic}")
 
 # Function to handle MQTT messages
-def on_message(client, userdata, message):
+def on_message(client, userdata, message, properties=None):
     device_id = message.topic.split("/")[1]  # Extract device ID from the topic
     if device_id in queues:
         queues[device_id].append(message)

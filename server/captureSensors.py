@@ -9,7 +9,7 @@ for digital reads (0 or 1).
 Usage:
     uv run captureSensors.py [output_file]
 
-    Default output: sensor_data_YYYYMMDD_HHMMSS.csv
+    Default output: data/sensor_data_YYYYMMDD_HHMMSS.csv
 
 To stop capture: Ctrl+C
 
@@ -18,6 +18,7 @@ The output CSV format is:
 """
 
 import paho.mqtt.client as mqtt
+from paho.mqtt.client import CallbackAPIVersion
 import time
 import sys
 import csv
@@ -48,7 +49,7 @@ message_count = 0
 start_time = None
 
 
-def on_connect(client, userdata, flags, rc):
+def on_connect(client, userdata, flags, rc, properties=None):
     """Callback when connected to MQTT broker."""
     if rc == 0:
         print(f"Connected to MQTT broker at {MQTT_BROKER}")
@@ -67,7 +68,7 @@ def on_connect(client, userdata, flags, rc):
         sys.exit(1)
 
 
-def on_message(client, userdata, message):
+def on_message(client, userdata, message, properties=None):
     """Callback when a message is received."""
     global csv_writer, message_count, start_time
 
@@ -123,12 +124,16 @@ def main():
     # Set up signal handler for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
 
+    # Ensure data directory exists
+    import os
+    os.makedirs('data', exist_ok=True)
+
     # Determine output filename
     if len(sys.argv) > 1:
         output_filename = sys.argv[1]
     else:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        output_filename = f"sensor_data_{timestamp}.csv"
+        output_filename = f"data/sensor_data_{timestamp}.csv"
 
     # Open CSV file for writing
     csv_file = open(output_filename, 'w', newline='')
@@ -147,7 +152,11 @@ def main():
 
     # Connect to MQTT broker
     # Use clean_session=True to avoid receiving any queued/retained messages
-    client = mqtt.Client(MQTT_CLIENT_ID, clean_session=True)
+    client = mqtt.Client(
+        CallbackAPIVersion.VERSION2,
+        client_id=MQTT_CLIENT_ID,
+        clean_session=True
+    )
     client.on_connect = on_connect
     client.on_message = on_message
 

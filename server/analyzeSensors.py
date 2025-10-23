@@ -141,7 +141,7 @@ def print_report(sensor_stats, first_timestamp, last_timestamp, duration, total_
     print("\n")
 
 
-def create_visualizations(sensor_stats, first_timestamp, last_timestamp, duration):
+def create_visualizations(sensor_stats, first_timestamp, last_timestamp, duration, input_filename):
     """Create visualization plots."""
 
     print("Generating visualizations...")
@@ -201,8 +201,14 @@ def create_visualizations(sensor_stats, first_timestamp, last_timestamp, duratio
 
     plt.tight_layout()
 
-    # Save figure
-    output_filename = 'sensor_baseline_analysis.png'
+    # Save figure with name based on input file
+    import os
+
+    # Ensure data directory exists
+    os.makedirs('data', exist_ok=True)
+
+    base_name = os.path.splitext(os.path.basename(input_filename))[0]
+    output_filename = f'data/{base_name}_analysis.png'
     plt.savefig(output_filename, dpi=150, bbox_inches='tight')
     print(f"Visualization saved to: {output_filename}")
 
@@ -213,7 +219,7 @@ def main():
     if len(sys.argv) < 2:
         print("Usage: uv run analyzeSensors.py <sensor_data.csv>")
         print("\nExample:")
-        print("  uv run analyzeSensors.py sensor_data_20251021_221902.csv")
+        print("  uv run analyzeSensors.py data/sensor_data_20251021_221902.csv")
         sys.exit(1)
 
     filename = sys.argv[1]
@@ -226,7 +232,7 @@ def main():
         print_report(sensor_stats, first_ts, last_ts, duration, total)
 
         # Create visualizations
-        output_file = create_visualizations(sensor_stats, first_ts, last_ts, duration)
+        output_file = create_visualizations(sensor_stats, first_ts, last_ts, duration, filename)
 
         print(f"\nAnalysis complete!")
         print(f"Review the plot: {output_file}")

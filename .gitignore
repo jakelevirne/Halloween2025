@@ -8,5 +8,4 @@ server/.venv/
 __pycache__/
 
 # Generated data and analysis outputs
-sensor_data_*.csv
-sensor_baseline_analysis.png
+server/data/
