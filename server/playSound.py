@@ -2,21 +2,22 @@
 """
 Play audio files to specific channels on multi-channel audio interface.
 
-This script plays MP3 (or WAV) files to a specific output channel on the
-UMC1820 audio interface (or any multi-channel device).
+This script plays MP3 (or WAV) files to specific output channels on the
+UMC1820 audio interface (or any multi-channel device). Can play up to 8
+different sounds simultaneously on different channels.
 
 Usage:
     # List available audio devices
     uv run playSound.py --list
 
-    # Play sound on channel 3 (default)
-    uv run playSound.py sound/creepy-whistles-66703.mp3
+    # Play single sound on channel 3
+    uv run playSound.py sound/file1.mp3:3 --device "UMC1820"
 
-    # Play sound on a specific channel
-    uv run playSound.py sound/creepy-whistles-66703.mp3 --channel 5
+    # Play multiple sounds simultaneously on different channels
+    uv run playSound.py sound/file1.mp3:1 sound/file2.mp3:3 sound/file3.mp3:5 --device "UMC1820"
 
-    # Specify device by name or index
-    uv run playSound.py sound/file.mp3 --device "UMC1820" --channel 3
+    # Play up to 8 sounds at once
+    uv run playSound.py file1.mp3:1 file2.mp3:2 file3.mp3:3 file4.mp3:4 file5.mp3:5 --device "UMC1820"
 """
 
 import sys
@@ -58,35 +59,74 @@ def find_device_by_name(name):
     return None
 
 
-def play_audio_to_channel(audio_file, channel=3, device=None):
+def play_audio_to_channels(audio_specs, device=None):
     """
-    Play audio file to a specific output channel.
+    Play multiple audio files to specific output channels simultaneously.
 
     Args:
-        audio_file: Path to audio file (MP3, WAV, etc.)
-        channel: Output channel number (1-indexed)
+        audio_specs: List of (audio_file, channel) tuples
         device: Device name or index (None = default device)
     """
-    print(f"Loading audio file: {audio_file}")
+    if len(audio_specs) > 8:
+        print(f"Warning: Maximum 8 simultaneous sounds supported. Using first 8.")
+        audio_specs = audio_specs[:8]
 
-    # Load audio file with soundfile
-    data, sample_rate = sf.read(audio_file, dtype='float32')
+    print(f"\nLoading {len(audio_specs)} audio file(s)...")
 
-    # Handle stereo/mono
-    if len(data.shape) == 2:  # Stereo
-        num_input_channels = data.shape[1]
-        # Mix to mono
-        samples = data.mean(axis=1)
-    else:  # Mono
-        num_input_channels = 1
-        samples = data
+    # Load all audio files
+    loaded_audio = []
+    max_sample_rate = 0
 
-    duration = len(samples) / sample_rate
+    for audio_file, channel in audio_specs:
+        print(f"\n  [{channel}] {audio_file}")
 
-    print(f"Audio info:")
-    print(f"  Duration: {duration:.2f} seconds")
-    print(f"  Sample rate: {sample_rate} Hz")
-    print(f"  Input channels: {num_input_channels}")
+        try:
+            # Load audio file with soundfile
+            data, sample_rate = sf.read(audio_file, dtype='float32')
+
+            # Handle stereo/mono - mix to mono
+            if len(data.shape) == 2:  # Stereo
+                samples = data.mean(axis=1)
+            else:  # Mono
+                samples = data
+
+            duration = len(samples) / sample_rate
+            print(f"      Duration: {duration:.2f}s, Sample rate: {sample_rate} Hz")
+
+            loaded_audio.append({
+                'samples': samples,
+                'sample_rate': sample_rate,
+                'channel': channel,
+                'file': audio_file
+            })
+
+            max_sample_rate = max(max_sample_rate, sample_rate)
+
+        except Exception as e:
+            print(f"      Error loading file: {e}")
+            continue
+
+    if not loaded_audio:
+        print("Error: No audio files loaded successfully")
+        return
+
+    # Resample all audio to the highest sample rate if needed
+    for audio in loaded_audio:
+        if audio['sample_rate'] != max_sample_rate:
+            # Simple resampling by repeating/skipping samples
+            ratio = max_sample_rate / audio['sample_rate']
+            new_length = int(len(audio['samples']) * ratio)
+            audio['samples'] = np.interp(
+                np.linspace(0, len(audio['samples']) - 1, new_length),
+                np.arange(len(audio['samples'])),
+                audio['samples']
+            )
+            audio['sample_rate'] = max_sample_rate
+
+    # Find the longest audio duration
+    max_length = max(len(audio['samples']) for audio in loaded_audio)
+
+    print(f"\nTotal playback duration: {max_length / max_sample_rate:.2f} seconds")
 
     # Find device
     device_idx = None
@@ -111,28 +151,41 @@ def play_audio_to_channel(audio_file, channel=3, device=None):
         print(f"\nUsing default output device: {default_device['name']}")
         max_channels = default_device['max_output_channels']
 
-    # Validate channel number
-    if channel < 1 or channel > max_channels:
-        print(f"Error: Channel {channel} is out of range (1-{max_channels})")
-        return
+    # Validate all channel numbers
+    channels_used = []
+    for audio in loaded_audio:
+        channel = audio['channel']
+        if channel < 1 or channel > max_channels:
+            print(f"Error: Channel {channel} is out of range (1-{max_channels})")
+            return
+        channels_used.append(channel)
 
-    print(f"\nPlaying on channel {channel}...")
+    print(f"\nPlaying on channel(s): {', '.join(map(str, sorted(channels_used)))}")
     print("Press Ctrl+C to stop playback")
 
     # Set up signal handler for graceful interruption
     signal.signal(signal.SIGINT, signal_handler)
 
-    # Create multi-channel output array
-    # All channels silent except the target channel
-    num_channels = max_channels
-    output = np.zeros((len(samples), num_channels), dtype=np.float32)
+    # Create multi-channel output array (all channels start silent)
+    output = np.zeros((max_length, max_channels), dtype=np.float32)
 
-    # Put audio data in the specified channel (convert to 0-indexed)
-    output[:, channel - 1] = samples
+    # Mix each audio file into its designated channel
+    for audio in loaded_audio:
+        channel_idx = audio['channel'] - 1  # Convert to 0-indexed
+        samples = audio['samples']
+
+        # Pad with silence if shorter than max_length
+        if len(samples) < max_length:
+            padded = np.zeros(max_length, dtype=np.float32)
+            padded[:len(samples)] = samples
+            samples = padded
+
+        # Add to the output channel
+        output[:, channel_idx] = samples
 
     # Play audio
     try:
-        sd.play(output, samplerate=sample_rate, device=device_idx)
+        sd.play(output, samplerate=max_sample_rate, device=device_idx)
         sd.wait()  # Wait for playback to finish
         print("\nPlayback complete!")
     except KeyboardInterrupt:
@@ -144,21 +197,26 @@ def play_audio_to_channel(audio_file, channel=3, device=None):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Play audio files to specific channels on multi-channel audio interface',
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        description='Play audio files to specific channels on multi-channel audio interface. '
+                    'Supports playing up to 8 sounds simultaneously.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # List available devices
+  %(prog)s --list
+
+  # Play single sound on channel 3
+  %(prog)s sound/file.mp3:3 --device UMC1820
+
+  # Play multiple sounds simultaneously
+  %(prog)s sound/sound1.mp3:1 sound/sound2.mp3:3 sound/sound3.mp3:5 --device UMC1820
+"""
     )
 
     parser.add_argument(
-        'audio_file',
-        nargs='?',
-        help='Path to audio file (MP3, WAV, etc.)'
-    )
-
-    parser.add_argument(
-        '--channel', '-c',
-        type=int,
-        default=3,
-        help='Output channel number (default: 3)'
+        'audio_specs',
+        nargs='*',
+        help='Audio file(s) with channel in format: file.mp3:channel (e.g., sound.mp3:3)'
     )
 
     parser.add_argument(
@@ -179,22 +237,37 @@ def main():
         list_audio_devices()
         return
 
-    # Require audio file if not listing
-    if not args.audio_file:
+    # Require at least one audio spec if not listing
+    if not args.audio_specs:
         parser.print_help()
-        print("\nError: audio_file is required (unless using --list)")
+        print("\nError: At least one audio file specification required (unless using --list)")
+        print("Format: file.mp3:channel (e.g., sound/creepy.mp3:3)")
         sys.exit(1)
+
+    # Parse audio specifications
+    audio_specs = []
+    for spec in args.audio_specs:
+        if ':' not in spec:
+            print(f"Error: Invalid format '{spec}'. Must be file:channel (e.g., sound.mp3:3)")
+            sys.exit(1)
+
+        parts = spec.rsplit(':', 1)  # Split on last colon to handle paths with colons
+        if len(parts) != 2:
+            print(f"Error: Invalid format '{spec}'. Must be file:channel")
+            sys.exit(1)
+
+        file_path = parts[0]
+        try:
+            channel = int(parts[1])
+        except ValueError:
+            print(f"Error: Invalid channel number '{parts[1]}' in '{spec}'")
+            sys.exit(1)
+
+        audio_specs.append((file_path, channel))
 
     # Play audio
     try:
-        play_audio_to_channel(
-            args.audio_file,
-            channel=args.channel,
-            device=args.device
-        )
-    except FileNotFoundError:
-        print(f"Error: File not found: {args.audio_file}")
-        sys.exit(1)
+        play_audio_to_channels(audio_specs, device=args.device)
     except Exception as e:
         print(f"Error: {e}")
         import traceback
