@@ -95,6 +95,13 @@ int pinY = Y_PIN;
 
 int AtimerCount, BtimerCount, XtimerCount, YtimerCount = 0;
 
+// Sequence support for X_PIN
+#define MAX_SEQUENCE_STEPS 50
+int sequenceDurations[MAX_SEQUENCE_STEPS];  // Duration in ms for each step
+int sequenceStepCount = 0;                   // Number of steps in current sequence
+int currentSequenceStep = 0;                 // Which step we're currently on
+unsigned long sequenceStepStartTime = 0;     // When the current step started
+bool sequenceRunning = false;                // Is a sequence currently executing
 
 
 // With core v2.0.0+, you can't use Serial.print/println in ISR or crash.
@@ -123,11 +130,14 @@ bool IRAM_ATTR TimerHandler0(void * timerNo)
   }
 
   //and sets the diital pin HIGH if that message came in, and keeps it high for count cycles of this timer (i.e. count * TIMER0_INTERVAL_MS)
-  if (XtimerCount > 0) {
-    digitalWrite(pinX, HIGH);
-    XtimerCount--;
-  } else {
-    digitalWrite(pinX, LOW);
+  // Only control X_PIN via timer if no sequence is running
+  if (!sequenceRunning) {
+    if (XtimerCount > 0) {
+      digitalWrite(pinX, HIGH);
+      XtimerCount--;
+    } else {
+      digitalWrite(pinX, LOW);
+    }
   }
 
   //and sets the diital pin HIGH if that message came in, and keeps it high for count cycles of this timer (i.e. count * TIMER0_INTERVAL_MS)
@@ -145,6 +155,41 @@ bool IRAM_ATTR TimerHandler0(void * timerNo)
 // Init ESP32 timer 0
 ESP32Timer ITimer0(0);
 
+// Parse and start a sequence from a string like "300,500,300,500,300,7000"
+void startSequence(String sequenceString) {
+  sequenceStepCount = 0;
+  currentSequenceStep = 0;
+
+  // Parse comma-separated durations
+  int startIndex = 0;
+  int commaIndex;
+
+  while ((commaIndex = sequenceString.indexOf(',', startIndex)) != -1 && sequenceStepCount < MAX_SEQUENCE_STEPS) {
+    String durationStr = sequenceString.substring(startIndex, commaIndex);
+    sequenceDurations[sequenceStepCount] = durationStr.toInt();
+    sequenceStepCount++;
+    startIndex = commaIndex + 1;
+  }
+
+  // Get the last value (after the last comma or the only value if no commas)
+  if (startIndex < sequenceString.length() && sequenceStepCount < MAX_SEQUENCE_STEPS) {
+    String durationStr = sequenceString.substring(startIndex);
+    sequenceDurations[sequenceStepCount] = durationStr.toInt();
+    sequenceStepCount++;
+  }
+
+  // Start the sequence
+  if (sequenceStepCount > 0) {
+    // Cancel any running X timer to avoid conflicts
+    XtimerCount = 0;
+
+    sequenceRunning = true;
+    currentSequenceStep = 0;
+    sequenceStepStartTime = millis();
+    // First step is HIGH
+    digitalWrite(pinX, HIGH);
+  }
+}
 
 void setup(void)
 {
@@ -237,11 +282,18 @@ void onConnectionEstablished() {
     if (payload.charAt(0) == 'X') {
         String numberString = payload.substring(1); // Extract the remaining characters
         XtimerCount = numberString.toInt(); // Convert the remaining characters to an integer
+        // Cancel any running sequence to avoid conflicts
+        sequenceRunning = false;
     }
 
     if (payload.charAt(0) == 'Y') {
         String numberString = payload.substring(1); // Extract the remaining characters
         YtimerCount = numberString.toInt(); // Convert the remaining characters to an integer
+    }
+
+    if (payload.charAt(0) == 'S') {
+        String sequenceString = payload.substring(1); // Extract the sequence data after 'S'
+        startSequence(sequenceString);
     }
 });
 
@@ -258,6 +310,31 @@ void loop()
     Serial.println(sensorValue);
     client.publish("device/"+ mac + "/sensor", String(sensorValue));
     lastPublishTime = currentMillis;
+  }
+
+  // Execute sequence if one is running
+  if (sequenceRunning) {
+    unsigned long elapsed = currentMillis - sequenceStepStartTime;
+
+    // Check if current step duration has elapsed
+    if (elapsed >= sequenceDurations[currentSequenceStep]) {
+      // Move to next step
+      currentSequenceStep++;
+
+      if (currentSequenceStep < sequenceStepCount) {
+        // Toggle pin state - even steps are HIGH, odd steps are LOW
+        if (currentSequenceStep % 2 == 0) {
+          digitalWrite(pinX, HIGH);
+        } else {
+          digitalWrite(pinX, LOW);
+        }
+        sequenceStepStartTime = currentMillis;
+      } else {
+        // Sequence complete - ensure pin is LOW and stop
+        digitalWrite(pinX, LOW);
+        sequenceRunning = false;
+      }
+    }
   }
 
 }
