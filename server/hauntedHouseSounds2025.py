@@ -3,14 +3,22 @@
 
 import asyncio
 import time
+import subprocess
 import paho.mqtt.client as mqtt
 from paho.mqtt.client import CallbackAPIVersion
+
+# Speaker channel mapping:
+# 1-door
+# 2-werewolf
+# 3-bubba
+# 4-coffin
+# 5-witches
 
 # Constants for device names
 PROP3 = "54:32:04:46:61:88" # COFFIN SENSOR
 
 SENSOR_THRESHOLD = 0
-COOLDOWN_SECONDS = 80  # Minimum time between runs for each prop
+COOLDOWN_SECONDS = 10  # Minimum time between runs for each prop
 prop_active = False  # Track if any prop is currently running
 last_run_time = {PROP3: 0}  # Track last run time for each prop
 
@@ -68,6 +76,12 @@ async def process_queue_PROP3():
                 prop_active = True
                 last_run_time[PROP3] = current_time
                 log("COFFIN SOUND")
+                # Play sound on channel 4 (coffin speaker)
+                subprocess.Popen([
+                    "uv", "run", "playSound.py",
+                    "sound/witch-laugh-189108.mp3:4",
+                    "--device", "UMC1820"
+                ])
                 await asyncio.sleep(10)  # Delay after running the prop
                 queues[PROP3] = []  # Clear all events that came in during the delay
                 prop_active = False
