@@ -314,7 +314,7 @@ async def process_queue_PROP1():
             time_since_last_run = current_time - last_run_time[PROP1]
             time_since_sound_started = current_time - sound_started_time
 
-            if consecutive_high and time_since_last_run >= COOLDOWN_SECONDS and time_since_sound_started >= MIN_SOUND_PLAY_TIME:
+            if consecutive_high and time_since_last_run >= COOLDOWN_SECONDS + 40 and time_since_sound_started >= MIN_SOUND_PLAY_TIME:
                 last_run_time[PROP1] = current_time
                 sound_started_time = current_time
                 log("DOOR triggered")
