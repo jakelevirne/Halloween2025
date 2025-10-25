@@ -17,7 +17,10 @@ PROP6 = "60:55:F9:7B:82:30" # SCARECROW SENSOR
 PROP7 = "54:32:04:46:61:40" # COFFIN ACTUATOR
 
 SENSOR_THRESHOLD = 0
+COOLDOWN_SECONDS = 120  # Minimum time between runs for each prop
 fogFlipper = True
+prop_active = False  # Track if any prop is currently running
+last_run_time = {PROP5: 0, PROP6: 0}  # Track last run time for each prop
 
 # Dictionary to store lists for each device
 queues = {
@@ -58,6 +61,7 @@ client.on_message = on_message
 
 # WEREWOLF
 async def process_queue_PROP5():
+    global prop_active
     while True:
         await asyncio.sleep(0.3)
         if len(queues[PROP5]) >= 2:
@@ -75,14 +79,21 @@ async def process_queue_PROP5():
                     consecutive_high = True
                     break
 
-            if consecutive_high:
-                publish_event(f"device/{PROP5}/actuator", "X30")  # Publish event when two consecutive readings exceed threshold
-                await asyncio.sleep(60)  # Delay after running the werewolf
+            # Check cooldown and prop_active before triggering
+            current_time = time.time()
+            time_since_last_run = current_time - last_run_time[PROP5]
+            if consecutive_high and not prop_active and time_since_last_run >= COOLDOWN_SECONDS:
+                prop_active = True
+                last_run_time[PROP5] = current_time
+                publish_event(f"device/{PROP5}/actuator", "X10")  # Publish event when two consecutive readings exceed threshold
+                await asyncio.sleep(10)  # Delay after running the prop
                 queues[PROP5] = []  # Clear all events that came in during the delay
+                prop_active = False
 
 
 # SCARECROW
 async def process_queue_PROP6():
+    global prop_active
     while True:
         await asyncio.sleep(0.3)
         if len(queues[PROP6]) >= 2:
@@ -100,10 +111,16 @@ async def process_queue_PROP6():
                     consecutive_high = True
                     break
 
-            if consecutive_high:
+            # Check cooldown and prop_active before triggering
+            current_time = time.time()
+            time_since_last_run = current_time - last_run_time[PROP6]
+            if consecutive_high and not prop_active and time_since_last_run >= COOLDOWN_SECONDS:
+                prop_active = True
+                last_run_time[PROP6] = current_time
                 publish_event(f"device/{PROP6}/actuator", "X2")  # Publish event when two consecutive readings exceed threshold
-                await asyncio.sleep(60)  # Delay after running the werewolf
+                await asyncio.sleep(20)  # Delay after running the prop
                 queues[PROP6] = []  # Clear all events that came in during the delay
+                prop_active = False
 
 
 # Define the event loop
