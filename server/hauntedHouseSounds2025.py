@@ -18,8 +18,13 @@ from paho.mqtt.client import CallbackAPIVersion
 
 # ===== AUDIO CONFIGURATION =====
 AUDIO_DEVICE = "UMC1820"  # Audio device name
-COFFIN_SOUND_FILE = "sound/witch-laugh-189108.mp3"  # Change this to switch sounds
-COFFIN_SPEAKER_CHANNEL = 4  # Speaker channel for coffin
+COFFIN_SOUNDS = [
+    ("sound/2025/3_Speaker1.mp3", 1),
+    ("sound/2025/3_Speaker2.mp3", 2),
+    ("sound/2025/3_Speaker3.mp3", 3),
+    ("sound/2025/3_Speaker4.mp3", 4),
+    ("sound/2025/3_Speaker5.mp3", 5),
+]
 BUBBA_SOUNDS = [
     ("sound/2025/4_Speaker1.mp3", 1),
     ("sound/2025/4_Speaker2.mp3", 2),
@@ -290,8 +295,8 @@ async def process_queue_PROP3():
                 last_run_time[PROP3] = current_time
                 sound_started_time = current_time
                 log("COFFIN triggered")
-                # Play sound on coffin speaker channel
-                play_sound_on_channel(COFFIN_SOUND_FILE, COFFIN_SPEAKER_CHANNEL, AUDIO_DEVICE)
+                # Play different sounds on each speaker channel
+                play_different_sounds_on_channels(COFFIN_SOUNDS, AUDIO_DEVICE)
                 await asyncio.sleep(10)  # Delay after running the prop
                 queues[PROP3] = []  # Clear all events that came in during the delay
 
