@@ -29,7 +29,8 @@ PROP4 = "60:55:F9:7B:60:BC" # BUBBA SENSOR
 
 SENSOR_THRESHOLD = 0
 COOLDOWN_SECONDS = 10  # Minimum time between runs for each prop
-prop_active = False  # Track if any prop is currently running
+MIN_SOUND_PLAY_TIME = 5  # Minimum seconds a sound must play before being interrupted
+sound_started_time = 0  # Track when current sound started playing
 last_run_time = {PROP3: 0, PROP4: 0}  # Track last run time for each prop
 
 # Dictionary to store lists for each device
@@ -157,7 +158,7 @@ client.on_message = on_message
 
 # COFFIN
 async def process_queue_PROP3():
-    global prop_active
+    global sound_started_time
     while True:
         await asyncio.sleep(0.3)
         if len(queues[PROP3]) >= 2:
@@ -175,23 +176,24 @@ async def process_queue_PROP3():
                     consecutive_high = True
                     break
 
-            # Check cooldown and prop_active before triggering
+            # Check cooldown and if current sound has played long enough
             current_time = time.time()
             time_since_last_run = current_time - last_run_time[PROP3]
-            if consecutive_high and not prop_active and time_since_last_run >= COOLDOWN_SECONDS:
-                prop_active = True
+            time_since_sound_started = current_time - sound_started_time
+
+            if consecutive_high and time_since_last_run >= COOLDOWN_SECONDS and time_since_sound_started >= MIN_SOUND_PLAY_TIME:
                 last_run_time[PROP3] = current_time
+                sound_started_time = current_time
                 log("COFFIN triggered")
                 # Play sound on coffin speaker channel
                 play_sound_on_channel(COFFIN_SOUND_FILE, COFFIN_SPEAKER_CHANNEL, AUDIO_DEVICE)
                 await asyncio.sleep(10)  # Delay after running the prop
                 queues[PROP3] = []  # Clear all events that came in during the delay
-                prop_active = False
 
 
 # BUBBA
 async def process_queue_PROP4():
-    global prop_active
+    global sound_started_time
     while True:
         await asyncio.sleep(0.3)
         if len(queues[PROP4]) >= 2:
@@ -209,18 +211,19 @@ async def process_queue_PROP4():
                     consecutive_high = True
                     break
 
-            # Check cooldown and prop_active before triggering
+            # Check cooldown and if current sound has played long enough
             current_time = time.time()
             time_since_last_run = current_time - last_run_time[PROP4]
-            if consecutive_high and not prop_active and time_since_last_run >= COOLDOWN_SECONDS:
-                prop_active = True
+            time_since_sound_started = current_time - sound_started_time
+
+            if consecutive_high and time_since_last_run >= COOLDOWN_SECONDS and time_since_sound_started >= MIN_SOUND_PLAY_TIME:
                 last_run_time[PROP4] = current_time
+                sound_started_time = current_time
                 log("BUBBA triggered")
                 # Play sound on all speaker channels
                 play_sound_on_multiple_channels(BUBBA_SOUND_FILE, BUBBA_SPEAKER_CHANNELS, AUDIO_DEVICE)
                 await asyncio.sleep(10)  # Delay after running the prop
                 queues[PROP4] = []  # Clear all events that came in during the delay
-                prop_active = False
 
 
 # Define the event loop
