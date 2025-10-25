@@ -1,4 +1,4 @@
-# Halloween2024
+# Halloween2025
 
 This was year 2 of the MQTT-based messaging architecture. The key components are:
 - Common firmware on all of the controllers (ESP32-C3s) that

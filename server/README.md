@@ -34,6 +34,56 @@ All props use HC-SR501 PIR motion sensors with digital output (0 or 1).
 - Sensor data: `device/{MAC_ADDRESS}/sensor`
 - Actuator control: `device/{MAC_ADDRESS}/actuator`
 
+### Actuator Messages
+
+All devices support the following message formats on their `device/{MAC_ADDRESS}/actuator` topic:
+
+#### Basic Pin Control
+
+- **`A#`** - Pin A goes LOW for # timer cycles (e.g., `A5`)
+  - Pin A is normally HIGH, goes LOW for specified duration
+  - Duration = # × 500ms (timer interval)
+
+- **`B#`** - Pin B goes LOW for # timer cycles (e.g., `B10`)
+  - Pin B is normally HIGH, goes LOW for specified duration
+  - Duration = # × 500ms (timer interval)
+
+- **`X#`** - Pin X goes HIGH for # timer cycles (e.g., `X3`)
+  - Pin X is normally LOW, goes HIGH for specified duration
+  - Duration = # × 500ms (timer interval)
+  - Cancels any running sequence
+
+- **`Y#`** - Pin Y goes HIGH for # timer cycles (e.g., `Y8`)
+  - Pin Y is normally LOW, goes HIGH for specified duration
+  - Duration = # × 500ms (timer interval)
+
+#### Sequence Control (X_PIN only)
+
+- **`S<duration1>,<duration2>,...`** - Execute a timed HIGH/LOW sequence on X_PIN
+  - Example: `S300,500,300,500,300,7000`
+  - Durations are in milliseconds
+  - First step starts HIGH, then alternates LOW, HIGH, LOW, etc.
+  - Sequence runs non-blocking in the main loop
+  - Final state is LOW when sequence completes
+  - Cancels any running X timer to avoid conflicts
+  - Up to 50 steps supported
+
+**Sequence Example:**
+```bash
+# Coffin pattern: quick flashes followed by long pause
+mosquitto_pub -h 192.168.86.2 -t "device/54:32:04:46:61:88/actuator" \
+  -m "S300,500,300,500,300,7000"
+```
+
+This produces:
+- HIGH for 300ms
+- LOW for 500ms
+- HIGH for 300ms
+- LOW for 500ms
+- HIGH for 300ms
+- LOW for 7000ms (7 seconds)
+- Then stops in LOW state
+
 ## Sensor Data Capture & Analysis
 
 ### Capturing Sensor Data
