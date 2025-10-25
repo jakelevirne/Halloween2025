@@ -66,7 +66,7 @@ async def process_queue_PROP5():
             queues[PROP5] = [messages[-1]]  # Keep last message to check consecutive across cycles
 
             payloads = [int(message.payload.decode()) for message in messages]  # Extract payloads as integers
-            log(f"PROP5 Payloads: {payloads}")
+            log(f"PROP5 Payloads: {payloads}  # WEREWOLF")
 
             # Check for two consecutive payloads > SENSOR_THRESHOLD
             consecutive_high = False
@@ -80,6 +80,30 @@ async def process_queue_PROP5():
                 await asyncio.sleep(60)  # Delay after running the werewolf
                 queues[PROP5] = []  # Clear all events that came in during the delay
 
+
+# SCARECROW
+async def process_queue_PROP6():
+    while True:
+        await asyncio.sleep(0.3)
+        if len(queues[PROP6]) >= 2:
+            # Copy the queue and keep the last message for next cycle
+            messages = queues[PROP6][:]
+            queues[PROP6] = [messages[-1]]  # Keep last message to check consecutive across cycles
+
+            payloads = [int(message.payload.decode()) for message in messages]  # Extract payloads as integers
+            log(f"PROP6 Payloads: {payloads}  # SCARECROW")
+
+            # Check for two consecutive payloads > SENSOR_THRESHOLD
+            consecutive_high = False
+            for i in range(len(payloads) - 1):
+                if payloads[i] > SENSOR_THRESHOLD and payloads[i + 1] > SENSOR_THRESHOLD:
+                    consecutive_high = True
+                    break
+
+            if consecutive_high:
+                publish_event(f"device/{PROP6}/actuator", "X2")  # Publish event when two consecutive readings exceed threshold
+                await asyncio.sleep(60)  # Delay after running the werewolf
+                queues[PROP6] = []  # Clear all events that came in during the delay
 
 
 # Define the event loop
@@ -97,6 +121,6 @@ if __name__ == "__main__":
     asyncio.set_event_loop(loop)
     loop.create_task(event_loop())
     loop.create_task(process_queue_PROP5())
-
+    loop.create_task(process_queue_PROP6())
     client.loop_start()
     loop.run_forever()
