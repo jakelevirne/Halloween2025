@@ -22,7 +22,7 @@ uv run hauntedHouseLoop.py
 
 All props use HC-SR501 PIR motion sensors with digital output (0 or 1).
 
-1. **1-door** (`60:55:F9:7B:98:14`) - Entry door sensor
+1. **1-door** (`60:55:F9:7B:82:40`) - Entry door sensor
 2. **2-witches** (`60:55:F9:7B:5F:2C`) - Witches area sensor
 3. **3-coffin** (`54:32:04:46:61:88`) - Coffin sensor
 4. **4-bubba** (`60:55:F9:7B:60:BC`) - Bubba sensor
@@ -41,12 +41,16 @@ All props use HC-SR501 PIR motion sensors with digital output (0 or 1).
 Record live sensor readings for analysis:
 
 ```bash
-# Start capturing (saves to data/sensor_data_YYYYMMDD_HHMMSS.csv)
-# Automatically runs analysis when stopped with Ctrl+C
+# Baseline noise capture (room empty)
+# Automatically runs baseline analysis when stopped with Ctrl+C
 uv run captureSensors.py
 
-# Capture to specific file (still auto-analyzes)
-uv run captureSensors.py data/my_capture.csv
+# Movement pattern capture (walk around the room)
+# Automatically runs movement analysis when stopped with Ctrl+C
+uv run captureSensors.py --movement
+
+# Capture to specific file
+uv run captureSensors.py data/my_capture.csv --movement
 
 # Skip automatic analysis
 uv run captureSensors.py --noanalyze
@@ -61,22 +65,47 @@ The script captures all sensor readings with timestamps. Sensors report every ~5
 The analysis runs automatically after capture, but you can also run it manually:
 
 ```bash
-# Manually analyze a capture file
+# Baseline noise analysis (for empty room captures)
 uv run analyzeSensors.py data/sensor_data_20251021_221902.csv
+
+# Movement pattern analysis (for walk-around captures)
+uv run analyzeSensors.py data/sensor_data_20251021_221902.csv --movement
 ```
 
-The analysis generates:
-- Console report with statistics (trigger %, noise levels, triggers/minute)
-- Visual plots showing:
-  - Noise level by sensor (color-coded: green <1%, orange 1-5%, red >5%)
-  - Total trigger counts
-  - Timeline of all triggers
-- Output saved to: `data/sensor_data_YYYYMMDD_HHMMSS_analysis.png`
+#### Baseline Noise Analysis
 
-**Use Cases:**
-- **Baseline noise analysis**: Capture when room is empty to identify noisy sensors
-- **Movement tracking**: Capture while walking through to understand sensor coverage
-- **Debugging**: Identify sensors that need sensitivity adjustment
+For captures when the room is empty. Identifies sensors with false positives.
+
+**Output includes:**
+- Console report: trigger %, noise levels, triggers/minute
+- Visual plots:
+  - Noise level by sensor (color-coded: green <1%, orange 1-5%, red >5%)
+  - Total false trigger counts
+  - Timeline of all false triggers
+- Saved to: `data/sensor_data_YYYYMMDD_HHMMSS_analysis.png`
+
+**Use for:**
+- Identifying noisy sensors that need adjustment
+- Verifying sensors aren't triggering when room is empty
+- Debugging sensitivity issues
+
+#### Movement Pattern Analysis
+
+For captures while walking through the room. Analyzes sensor coverage and trigger sequences.
+
+**Output includes:**
+- Console report: sensor coverage, most/least active sensors
+- Visual plots:
+  - Activity level by sensor (green = active, gray = inactive)
+  - Percentage of time each sensor was active
+  - Movement timeline showing trigger sequences
+- Saved to: `data/sensor_data_YYYYMMDD_HHMMSS_movement_analysis.png`
+
+**Use for:**
+- Understanding sensor coverage zones
+- Finding gaps in sensor coverage
+- Verifying all sensors trigger during walk-through
+- Planning prop placement and trigger sequences
 
 ## Sound Playback
 

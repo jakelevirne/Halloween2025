@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 """
-Analyze baseline noise from PIR sensor data.
+Analyze PIR sensor data for baseline noise or movement patterns.
 
 This script reads captured sensor data and generates visualizations to help
-understand which sensors have the most false positives (noise) when the room
-is empty.
+understand sensor behavior in different scenarios:
+- Baseline mode: Analyze false positives when room is empty
+- Movement mode: Analyze sensor coverage and trigger patterns during activity
 
 Usage:
-    uv run analyzeSensors.py <sensor_data.csv>
+    uv run analyzeSensors.py <sensor_data.csv> [--movement]
+
+    --movement: Analyze movement patterns instead of baseline noise
 
 Output:
     - Console report with statistics
-    - PNG plot showing noise patterns
+    - PNG plot showing patterns
 """
 
 import sys
@@ -79,8 +82,8 @@ def analyze_sensor_data(filename):
     return sensor_stats, first_timestamp, last_timestamp, duration, total_messages
 
 
-def print_report(sensor_stats, first_timestamp, last_timestamp, duration, total_messages):
-    """Print console report of sensor statistics."""
+def print_baseline_report(sensor_stats, first_timestamp, last_timestamp, duration, total_messages):
+    """Print console report of baseline noise statistics."""
 
     print("\n" + "=" * 80)
     print("BASELINE NOISE ANALYSIS REPORT")
@@ -141,10 +144,182 @@ def print_report(sensor_stats, first_timestamp, last_timestamp, duration, total_
     print("\n")
 
 
-def create_visualizations(sensor_stats, first_timestamp, last_timestamp, duration, input_filename):
-    """Create visualization plots."""
+def print_movement_report(sensor_stats, first_timestamp, last_timestamp, duration, total_messages):
+    """Print console report of movement pattern statistics."""
 
-    print("Generating visualizations...")
+    print("\n" + "=" * 80)
+    print("MOVEMENT PATTERN ANALYSIS REPORT")
+    print("=" * 80)
+    print(f"\nCapture Period:")
+    print(f"  Start:    {first_timestamp.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
+    print(f"  End:      {last_timestamp.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
+    print(f"  Duration: {duration:.1f} seconds ({duration/60:.1f} minutes)")
+    print(f"  Total messages: {total_messages}")
+    print(f"  Message rate: {total_messages/duration:.1f} messages/second")
+
+    print("\n" + "-" * 80)
+    print("SENSOR COVERAGE (sorted by trigger count)")
+    print("-" * 80)
+    print(f"{'Sensor':<25} {'Total':<8} {'Triggers':<10} {'Active %':<10} {'Trig/min':<10}")
+    print("-" * 80)
+
+    # Sort sensors by trigger count (descending)
+    sorted_sensors = sorted(
+        sensor_stats.items(),
+        key=lambda x: x[1]['trigger_count'],
+        reverse=True
+    )
+
+    for device_id, stats in sorted_sensors:
+        total = stats['total_messages']
+        triggers = stats['trigger_count']
+        trigger_pct = (triggers / total * 100) if total > 0 else 0
+        triggers_per_min = (triggers / duration * 60) if duration > 0 else 0
+
+        print(f"{stats['name']:<25} {total:<8} {triggers:<10} {trigger_pct:>8.2f}%  {triggers_per_min:>8.2f}")
+
+    print("-" * 80)
+
+    # Analyze trigger sequences
+    print("\n" + "=" * 80)
+    print("COVERAGE ANALYSIS")
+    print("=" * 80)
+
+    # Count sensors that triggered
+    triggered_sensors = [
+        stats['name'] for device_id, stats in sensor_stats.items()
+        if stats['trigger_count'] > 0
+    ]
+
+    total_sensors = len(sensor_stats)
+    triggered_count = len(triggered_sensors)
+    coverage_pct = (triggered_count / total_sensors * 100) if total_sensors > 0 else 0
+
+    print(f"\nSensors triggered: {triggered_count}/{total_sensors} ({coverage_pct:.1f}%)")
+
+    if triggered_sensors:
+        print(f"\nActive sensors:")
+        for name in sorted(triggered_sensors):
+            print(f"  - {name}")
+
+    # Find sensors that never triggered
+    silent_sensors = [
+        stats['name'] for device_id, stats in sensor_stats.items()
+        if stats['trigger_count'] == 0
+    ]
+
+    if silent_sensors:
+        print(f"\nSensors with no triggers:")
+        for name in sorted(silent_sensors):
+            print(f"  - {name}")
+        print("\nConsider:")
+        print("  - Walking through areas covered by these sensors")
+        print("  - Checking sensor orientation and coverage zones")
+        print("  - Verifying sensors are working correctly")
+    else:
+        print("\nAll sensors triggered - excellent coverage!")
+
+    # Find most and least active sensors
+    if sorted_sensors:
+        most_active = sorted_sensors[0][1]
+        least_active = sorted_sensors[-1][1]
+
+        print(f"\nMost active sensor: {most_active['name']} ({most_active['trigger_count']} triggers)")
+        print(f"Least active sensor: {least_active['name']} ({least_active['trigger_count']} triggers)")
+
+    print("\n")
+
+
+def create_movement_visualizations(sensor_stats, first_timestamp, last_timestamp, duration, input_filename):
+    """Create movement pattern visualization plots."""
+
+    print("Generating movement visualizations...")
+
+    # Create figure with multiple subplots
+    fig = plt.figure(figsize=(16, 12))
+
+    # Sort sensors by name for consistent ordering
+    sorted_sensors = sorted(sensor_stats.items(), key=lambda x: x[1]['name'])
+
+    # --- Plot 1: Activity heatmap (trigger count) ---
+    ax1 = plt.subplot(2, 2, 1)
+    names = [stats['name'] for _, stats in sorted_sensors]
+    trigger_counts = [stats['trigger_count'] for _, stats in sorted_sensors]
+
+    colors = ['darkgreen' if cnt > 0 else 'lightgray' for cnt in trigger_counts]
+    bars = ax1.barh(names, trigger_counts, color=colors, alpha=0.7)
+    ax1.set_xlabel('Trigger Count')
+    ax1.set_title('Sensor Activity Level\n(Green: Active, Gray: Inactive)')
+    ax1.grid(axis='x', alpha=0.3)
+
+    # --- Plot 2: Coverage percentage ---
+    ax2 = plt.subplot(2, 2, 2)
+    trigger_pcts = [
+        (stats['trigger_count'] / stats['total_messages'] * 100) if stats['total_messages'] > 0 else 0
+        for _, stats in sorted_sensors
+    ]
+
+    colors = ['steelblue' if pct > 0 else 'lightgray' for pct in trigger_pcts]
+    ax2.barh(names, trigger_pcts, color=colors, alpha=0.7)
+    ax2.set_xlabel('Active Time (%)')
+    ax2.set_title('Percentage of Time Sensor Was Active')
+    ax2.grid(axis='x', alpha=0.3)
+
+    # --- Plot 3: Timeline of triggers ---
+    ax3 = plt.subplot(2, 1, 2)
+
+    # Plot each sensor's triggers over time
+    has_any_triggers = False
+    for idx, (device_id, stats) in enumerate(sorted_sensors):
+        # Filter to only trigger events (value = 1)
+        trigger_times = [ts for ts, val in zip(stats['timestamps'], stats['values']) if val == 1]
+        trigger_values = [idx] * len(trigger_times)
+
+        if trigger_times:
+            ax3.scatter(trigger_times, trigger_values, alpha=0.6, s=30, label=stats['name'])
+            has_any_triggers = True
+
+    # Set x-axis limits to full timeline
+    ax3.set_xlim(first_timestamp, last_timestamp)
+
+    ax3.set_yticks(range(len(sorted_sensors)))
+    ax3.set_yticklabels(names)
+    ax3.set_xlabel('Time')
+
+    if has_any_triggers:
+        ax3.set_title('Movement Timeline (each dot = sensor trigger)')
+    else:
+        ax3.set_title('Movement Timeline (NO TRIGGERS DETECTED)')
+        ax3.text(0.5, 0.5, 'No movement detected during capture period',
+                ha='center', va='center', transform=ax3.transAxes,
+                fontsize=12, style='italic', color='gray')
+
+    ax3.grid(axis='x', alpha=0.3)
+
+    # Format x-axis for time
+    ax3.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+    plt.setp(ax3.xaxis.get_majorticklabels(), rotation=45, ha='right')
+
+    plt.tight_layout()
+
+    # Save figure with name based on input file
+    import os
+
+    # Ensure data directory exists
+    os.makedirs('data', exist_ok=True)
+
+    base_name = os.path.splitext(os.path.basename(input_filename))[0]
+    output_filename = f'data/{base_name}_movement_analysis.png'
+    plt.savefig(output_filename, dpi=150, bbox_inches='tight')
+    print(f"Visualization saved to: {output_filename}")
+
+    return output_filename
+
+
+def create_baseline_visualizations(sensor_stats, first_timestamp, last_timestamp, duration, input_filename):
+    """Create baseline noise visualization plots."""
+
+    print("Generating baseline visualizations...")
 
     # Create figure with multiple subplots
     fig = plt.figure(figsize=(16, 10))
@@ -181,6 +356,7 @@ def create_visualizations(sensor_stats, first_timestamp, last_timestamp, duratio
     ax3 = plt.subplot(2, 1, 2)
 
     # Plot each sensor's triggers over time
+    has_any_triggers = False
     for idx, (device_id, stats) in enumerate(sorted_sensors):
         # Filter to only trigger events (value = 1)
         trigger_times = [ts for ts, val in zip(stats['timestamps'], stats['values']) if val == 1]
@@ -188,11 +364,23 @@ def create_visualizations(sensor_stats, first_timestamp, last_timestamp, duratio
 
         if trigger_times:
             ax3.scatter(trigger_times, trigger_values, alpha=0.6, s=20, label=stats['name'])
+            has_any_triggers = True
+
+    # Set x-axis limits to full timeline
+    ax3.set_xlim(first_timestamp, last_timestamp)
 
     ax3.set_yticks(range(len(sorted_sensors)))
     ax3.set_yticklabels(names)
     ax3.set_xlabel('Time')
-    ax3.set_title('Timeline of Sensor Triggers (each dot = false positive)')
+
+    if has_any_triggers:
+        ax3.set_title('Timeline of Sensor Triggers (each dot = false positive)')
+    else:
+        ax3.set_title('Timeline of Sensor Triggers (NO TRIGGERS - EXCELLENT!)')
+        ax3.text(0.5, 0.5, 'No false positives detected - perfect baseline!',
+                ha='center', va='center', transform=ax3.transAxes,
+                fontsize=12, style='italic', color='green')
+
     ax3.grid(axis='x', alpha=0.3)
 
     # Format x-axis for time
@@ -217,22 +405,28 @@ def create_visualizations(sensor_stats, first_timestamp, last_timestamp, duratio
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: uv run analyzeSensors.py <sensor_data.csv>")
-        print("\nExample:")
+        print("Usage: uv run analyzeSensors.py <sensor_data.csv> [--movement]")
+        print("\nExamples:")
         print("  uv run analyzeSensors.py data/sensor_data_20251021_221902.csv")
+        print("  uv run analyzeSensors.py data/sensor_data_20251021_221902.csv --movement")
         sys.exit(1)
 
+    # Parse arguments
     filename = sys.argv[1]
+    movement_mode = '--movement' in sys.argv
 
     try:
         # Analyze the data
         sensor_stats, first_ts, last_ts, duration, total = analyze_sensor_data(filename)
 
-        # Print report
-        print_report(sensor_stats, first_ts, last_ts, duration, total)
-
-        # Create visualizations
-        output_file = create_visualizations(sensor_stats, first_ts, last_ts, duration, filename)
+        if movement_mode:
+            # Movement pattern analysis
+            print_movement_report(sensor_stats, first_ts, last_ts, duration, total)
+            output_file = create_movement_visualizations(sensor_stats, first_ts, last_ts, duration, filename)
+        else:
+            # Baseline noise analysis
+            print_baseline_report(sensor_stats, first_ts, last_ts, duration, total)
+            output_file = create_baseline_visualizations(sensor_stats, first_ts, last_ts, duration, filename)
 
         print(f"\nAnalysis complete!")
         print(f"Review the plot: {output_file}")

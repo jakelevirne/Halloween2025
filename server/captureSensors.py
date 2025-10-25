@@ -7,10 +7,13 @@ to a CSV file with timestamps. The sensors are HC-SR501 PIR sensors configured
 for digital reads (0 or 1).
 
 Usage:
-    uv run captureSensors.py [output_file] [--noanalyze]
+    uv run captureSensors.py [output_file] [--noanalyze] [--movement]
 
     Default output: data/sensor_data_YYYYMMDD_HHMMSS.csv
     --noanalyze: Skip automatic analysis after capture
+    --movement: Run movement analysis instead of baseline noise analysis
+                (Note: This flag only affects which analysis runs after capture,
+                 not the capture process itself)
 
 To stop capture: Ctrl+C
 
@@ -31,7 +34,7 @@ import subprocess
 
 # Sensor definitions with friendly names
 SENSORS = {
-    "60:55:F9:7B:98:14": "1-door",
+    "60:55:F9:7B:82:40": "1-door",
     "60:55:F9:7B:5F:2C": "2-witches",
     "54:32:04:46:61:88": "3-coffin",
     "60:55:F9:7B:60:BC": "4-bubba",
@@ -49,6 +52,7 @@ csv_file = None
 message_count = 0
 start_time = None
 run_analysis = True
+movement_mode = False
 output_filename = None
 
 
@@ -124,19 +128,26 @@ def signal_handler(sig, frame):
     # Run analysis unless --noanalyze was specified
     if run_analysis and output_filename and message_count > 0:
         print("\n" + "=" * 60)
-        print("Running automatic analysis...")
+        if movement_mode:
+            print("Running automatic analysis (movement mode)...")
+        else:
+            print("Running automatic analysis (baseline mode)...")
         print("=" * 60)
         try:
-            subprocess.run(["uv", "run", "analyzeSensors.py", output_filename])
+            cmd = ["uv", "run", "analyzeSensors.py", output_filename]
+            if movement_mode:
+                cmd.append("--movement")
+            subprocess.run(cmd)
         except Exception as e:
             print(f"Error running analysis: {e}")
-            print(f"You can manually run: uv run analyzeSensors.py {output_filename}")
+            mode_flag = " --movement" if movement_mode else ""
+            print(f"You can manually run: uv run analyzeSensors.py {output_filename}{mode_flag}")
 
     sys.exit(0)
 
 
 def main():
-    global csv_writer, csv_file, start_time, run_analysis, output_filename
+    global csv_writer, csv_file, start_time, run_analysis, movement_mode, output_filename
 
     # Set up signal handler for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
@@ -152,6 +163,10 @@ def main():
     # Check for --noanalyze flag
     if '--noanalyze' in flags:
         run_analysis = False
+
+    # Check for --movement flag
+    if '--movement' in flags:
+        movement_mode = True
 
     # Determine output filename
     if len(args) > 0:
@@ -173,6 +188,13 @@ def main():
     print(f"Output file: {output_filename}")
     print(f"MQTT Broker: {MQTT_BROKER}")
     print(f"Sensors: {len(SENSORS)}")
+    if run_analysis:
+        if movement_mode:
+            print(f"Auto-analysis: Movement pattern analysis")
+        else:
+            print(f"Auto-analysis: Baseline noise analysis")
+    else:
+        print(f"Auto-analysis: Disabled")
     print()
 
     # Connect to MQTT broker
