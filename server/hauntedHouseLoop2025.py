@@ -34,10 +34,15 @@ mqtt_broker = "192.168.86.2"
 client = mqtt.Client(CallbackAPIVersion.VERSION2, client_id="server")
 client.connect(mqtt_broker)
 
+# Simple logging function with timestamp
+def log(message):
+    timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()) + f".{int(time.time() * 1000) % 1000:03d}"
+    print(f"[{timestamp}] {message}")
+
 # Function to publish MQTT events
 def publish_event(topic, message):
     client.publish(topic, message)
-    print(f"Published event: {message} to topic {topic}")
+    log(f"Published event: {message} to topic {topic}")
 
 # Function to handle MQTT messages
 def on_message(client, userdata, message, properties=None):
@@ -55,15 +60,25 @@ client.on_message = on_message
 async def process_queue_PROP5():
     while True:
         await asyncio.sleep(0.3)
-        if queues[PROP5]:
-            payloads = [int(message.payload.decode()) for message in queues[PROP5]]  # Extract payloads as integers
-            max_payload = max(payloads)  # Find the maximum payload value
-            print(f"PROP5 Max payload is: {max_payload}")
+        if len(queues[PROP5]) >= 2:
+            # Copy the queue and keep the last message for next cycle
+            messages = queues[PROP5][:]
+            queues[PROP5] = [messages[-1]]  # Keep last message to check consecutive across cycles
 
-            if max_payload > SENSOR_THRESHOLD:
-                publish_event(f"device/{PROP5}/actuator", "X30")  # Publish event when the maximum threshold is exceeded
-                await asyncio.sleep(20)  # Delay after running the werewolf
-        queues[PROP5] = []  # Clear the list
+            payloads = [int(message.payload.decode()) for message in messages]  # Extract payloads as integers
+            log(f"PROP5 Payloads: {payloads}")
+
+            # Check for two consecutive payloads > SENSOR_THRESHOLD
+            consecutive_high = False
+            for i in range(len(payloads) - 1):
+                if payloads[i] > SENSOR_THRESHOLD and payloads[i + 1] > SENSOR_THRESHOLD:
+                    consecutive_high = True
+                    break
+
+            if consecutive_high:
+                publish_event(f"device/{PROP5}/actuator", "X30")  # Publish event when two consecutive readings exceed threshold
+                await asyncio.sleep(60)  # Delay after running the werewolf
+                queues[PROP5] = []  # Clear all events that came in during the delay
 
 
 
