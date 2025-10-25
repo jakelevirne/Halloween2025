@@ -34,7 +34,7 @@ queues = {
 
 # Define MQTT parameters
 mqtt_broker = "192.168.86.2"
-client = mqtt.Client(CallbackAPIVersion.VERSION2, client_id="server")
+client = mqtt.Client(CallbackAPIVersion.VERSION2, client_id="server_props")
 client.connect(mqtt_broker)
 
 # Simple logging function with timestamp
@@ -85,7 +85,7 @@ async def process_queue_PROP3():
             if consecutive_high and not prop_active and time_since_last_run >= COOLDOWN_SECONDS:
                 prop_active = True
                 last_run_time[PROP3] = current_time
-                publish_event(f"device/{PROP7}/actuator", "X10")  # Publish to PROP7 (coffin actuator)
+                publish_event(f"device/{PROP7}/actuator", "S500,300,500,300,1000,300,500,300,500,300,2000")  # Publish to PROP7 (coffin actuator)
                 await asyncio.sleep(10)  # Delay after running the prop
                 queues[PROP3] = []  # Clear all events that came in during the delay
                 prop_active = False
