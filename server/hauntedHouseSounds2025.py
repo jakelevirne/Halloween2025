@@ -32,8 +32,13 @@ BUBBA_SOUNDS = [
     ("sound/2025/4_Speaker4.mp3", 4),
     ("sound/2025/4_Speaker5.mp3", 5),
 ]
-SCARECROW_SOUND_FILE = "sound/034046_crows-howling-graveyard-lo-fi-cassette-39little-town39-russia-920526flac-62614.mp3"
-SCARECROW_SPEAKER_CHANNELS = [1, 2, 3, 4, 5]  # Play on all speakers
+SCARECROW_SOUNDS = [
+    ("sound/2025/6_Speaker1.mp3", 1),
+    ("sound/2025/6_Speaker2.mp3", 2),
+    ("sound/2025/6_Speaker3.mp3", 3),
+    ("sound/2025/6_Speaker4.mp3", 4),
+    ("sound/2025/6_Speaker5.mp3", 5),
+]
 
 # Constants for device names
 PROP3 = "54:32:04:46:61:88" # COFFIN SENSOR
@@ -365,8 +370,8 @@ async def process_queue_PROP6():
                 last_run_time[PROP6] = current_time
                 sound_started_time = current_time
                 log("SCARECROW triggered")
-                # Play sound on all speaker channels
-                play_sound_on_multiple_channels(SCARECROW_SOUND_FILE, SCARECROW_SPEAKER_CHANNELS, AUDIO_DEVICE)
+                # Play different sounds on each speaker channel
+                play_different_sounds_on_channels(SCARECROW_SOUNDS, AUDIO_DEVICE)
                 await asyncio.sleep(10)  # Delay after running the prop
                 queues[PROP6] = []  # Clear all events that came in during the delay
 
