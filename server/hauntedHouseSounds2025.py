@@ -3,7 +3,9 @@
 
 import asyncio
 import time
-import subprocess
+import numpy as np
+import sounddevice as sd
+import soundfile as sf
 import paho.mqtt.client as mqtt
 from paho.mqtt.client import CallbackAPIVersion
 
@@ -13,6 +15,11 @@ from paho.mqtt.client import CallbackAPIVersion
 # 3-bubba
 # 4-coffin
 # 5-witches
+
+# ===== AUDIO CONFIGURATION =====
+AUDIO_DEVICE = "UMC1820"  # Audio device name
+COFFIN_SOUND_FILE = "sound/witch-laugh-189108.mp3"  # Change this to switch sounds
+COFFIN_SPEAKER_CHANNEL = 4  # Speaker channel for coffin
 
 # Constants for device names
 PROP3 = "54:32:04:46:61:88" # COFFIN SENSOR
@@ -36,6 +43,55 @@ client.connect(mqtt_broker)
 def log(message):
     timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()) + f".{int(time.time() * 1000) % 1000:03d}"
     print(f"[{timestamp}] {message}")
+
+# Audio playback functions
+def find_device_by_name(name):
+    """Find device index by name (partial match)."""
+    devices = sd.query_devices()
+    for idx, device in enumerate(devices):
+        if name.lower() in device['name'].lower():
+            return idx
+    return None
+
+def play_sound_on_channel(audio_file, channel, device_name):
+    """
+    Play an audio file on a specific channel.
+    Stops any currently playing audio first.
+    """
+    # Stop any currently playing audio
+    sd.stop()
+
+    # Find device
+    device_idx = find_device_by_name(device_name)
+    if device_idx is None:
+        log(f"Error: Audio device '{device_name}' not found")
+        return
+
+    device_info = sd.query_devices(device_idx)
+    max_channels = device_info['max_output_channels']
+
+    if channel < 1 or channel > max_channels:
+        log(f"Error: Channel {channel} out of range (1-{max_channels})")
+        return
+
+    # Load audio file
+    data, sample_rate = sf.read(audio_file, dtype='float32')
+
+    # Handle stereo/mono - mix to mono
+    if len(data.shape) == 2:  # Stereo
+        samples = data.mean(axis=1)
+    else:  # Mono
+        samples = data
+
+    # Create multi-channel output array (all channels silent except target)
+    output = np.zeros((len(samples), max_channels), dtype=np.float32)
+    output[:, channel - 1] = samples  # channel-1 for 0-indexed
+
+    # Play audio in the background (non-blocking)
+    sd.play(output, samplerate=sample_rate, device=device_idx)
+
+    duration = len(samples) / sample_rate
+    log(f"Playing {audio_file} on channel {channel} ({duration:.2f}s)")
 
 # Function to handle MQTT messages
 def on_message(client, userdata, message, properties=None):
@@ -75,13 +131,9 @@ async def process_queue_PROP3():
             if consecutive_high and not prop_active and time_since_last_run >= COOLDOWN_SECONDS:
                 prop_active = True
                 last_run_time[PROP3] = current_time
-                log("COFFIN SOUND")
-                # Play sound on channel 4 (coffin speaker)
-                subprocess.Popen([
-                    "uv", "run", "playSound.py",
-                    "sound/witch-laugh-189108.mp3:4",
-                    "--device", "UMC1820"
-                ])
+                log("COFFIN triggered")
+                # Play sound on coffin speaker channel
+                play_sound_on_channel(COFFIN_SOUND_FILE, COFFIN_SPEAKER_CHANNEL, AUDIO_DEVICE)
                 await asyncio.sleep(10)  # Delay after running the prop
                 queues[PROP3] = []  # Clear all events that came in during the delay
                 prop_active = False
