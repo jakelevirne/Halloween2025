@@ -22,21 +22,25 @@ COFFIN_SOUND_FILE = "sound/witch-laugh-189108.mp3"  # Change this to switch soun
 COFFIN_SPEAKER_CHANNEL = 4  # Speaker channel for coffin
 BUBBA_SOUND_FILE = "sound/thunderclap-377254.mp3"  # Change this to switch sounds
 BUBBA_SPEAKER_CHANNELS = [1, 2, 3, 4, 5]  # Play on all speakers
+SCARECROW_SOUND_FILE = "sound/034046_crows-howling-graveyard-lo-fi-cassette-39little-town39-russia-920526flac-62614.mp3"
+SCARECROW_SPEAKER_CHANNELS = [1, 2, 3, 4, 5]  # Play on all speakers
 
 # Constants for device names
 PROP3 = "54:32:04:46:61:88" # COFFIN SENSOR
 PROP4 = "60:55:F9:7B:60:BC" # BUBBA SENSOR
+PROP6 = "60:55:F9:7B:82:30" # SCARECROW SENSOR
 
 SENSOR_THRESHOLD = 0
 COOLDOWN_SECONDS = 10  # Minimum time between runs for each prop
 MIN_SOUND_PLAY_TIME = 5  # Minimum seconds a sound must play before being interrupted
 sound_started_time = 0  # Track when current sound started playing
-last_run_time = {PROP3: 0, PROP4: 0}  # Track last run time for each prop
+last_run_time = {PROP3: 0, PROP4: 0, PROP6: 0}  # Track last run time for each prop
 
 # Dictionary to store lists for each device
 queues = {
     PROP3: [],
-    PROP4: []
+    PROP4: [],
+    PROP6: []
 }
 
 # Define MQTT parameters
@@ -226,6 +230,41 @@ async def process_queue_PROP4():
                 queues[PROP4] = []  # Clear all events that came in during the delay
 
 
+# SCARECROW
+async def process_queue_PROP6():
+    global sound_started_time
+    while True:
+        await asyncio.sleep(0.3)
+        if len(queues[PROP6]) >= 2:
+            # Copy the queue and keep the last message for next cycle
+            messages = queues[PROP6][:]
+            queues[PROP6] = [messages[-1]]  # Keep last message to check consecutive across cycles
+
+            payloads = [int(message.payload.decode()) for message in messages]  # Extract payloads as integers
+            log(f"PROP6 Payloads: {payloads}  # SCARECROW")
+
+            # Check for two consecutive payloads > SENSOR_THRESHOLD
+            consecutive_high = False
+            for i in range(len(payloads) - 1):
+                if payloads[i] > SENSOR_THRESHOLD and payloads[i + 1] > SENSOR_THRESHOLD:
+                    consecutive_high = True
+                    break
+
+            # Check cooldown and if current sound has played long enough
+            current_time = time.time()
+            time_since_last_run = current_time - last_run_time[PROP6]
+            time_since_sound_started = current_time - sound_started_time
+
+            if consecutive_high and time_since_last_run >= COOLDOWN_SECONDS and time_since_sound_started >= MIN_SOUND_PLAY_TIME:
+                last_run_time[PROP6] = current_time
+                sound_started_time = current_time
+                log("SCARECROW triggered")
+                # Play sound on all speaker channels
+                play_sound_on_multiple_channels(SCARECROW_SOUND_FILE, SCARECROW_SPEAKER_CHANNELS, AUDIO_DEVICE)
+                await asyncio.sleep(10)  # Delay after running the prop
+                queues[PROP6] = []  # Clear all events that came in during the delay
+
+
 # Define the event loop
 async def event_loop():
     while True:
@@ -242,6 +281,7 @@ if __name__ == "__main__":
     loop.create_task(event_loop())
     loop.create_task(process_queue_PROP3())
     loop.create_task(process_queue_PROP4())
+    loop.create_task(process_queue_PROP6())
 
     client.loop_start()
     loop.run_forever()
