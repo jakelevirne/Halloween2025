@@ -23,14 +23,11 @@ uv run hauntedHouseLoop.py
 All props use HC-SR501 PIR motion sensors with digital output (0 or 1).
 
 1. **1-door** (`60:55:F9:7B:98:14`) - Entry door sensor
-2. **2-witches** (`60:55:F9:7B:63:88`) - Witches area sensor
-3. **3-mask-wall** (`60:55:F9:7B:5F:2C`) - Mask wall sensor
-4. **4-coffin** (`54:32:04:46:61:88`) - Coffin sensor
-5. **5-bubba-garage-door** (`60:55:F9:7B:60:BC`) - Bubba/garage door sensor
-6. **6-creepy-window** (`60:55:F9:7B:7F:98`) - Creepy window sensor
-7. **7-werewolf-rear** (`60:55:F9:7B:82:40`) - Werewolf rear sensor
-8. **8-werewolf-front** (`60:55:F9:7B:7B:60`) - Werewolf front sensor
-9. **9-scarecrow** (`60:55:F9:7B:82:30`) - Scarecrow sensor
+2. **2-witches** (`60:55:F9:7B:5F:2C`) - Witches area sensor
+3. **3-coffin** (`54:32:04:46:61:88`) - Coffin sensor
+4. **4-bubba** (`60:55:F9:7B:60:BC`) - Bubba sensor
+5. **5-werewolf-front** (`60:55:F9:7B:7B:60`) - Werewolf front sensor
+6. **6-scarecrow** (`60:55:F9:7B:82:30`) - Scarecrow sensor
 
 ### MQTT Topics
 
@@ -45,22 +42,26 @@ Record live sensor readings for analysis:
 
 ```bash
 # Start capturing (saves to data/sensor_data_YYYYMMDD_HHMMSS.csv)
+# Automatically runs analysis when stopped with Ctrl+C
 uv run captureSensors.py
 
-# Capture to specific file
+# Capture to specific file (still auto-analyzes)
 uv run captureSensors.py data/my_capture.csv
+
+# Skip automatic analysis
+uv run captureSensors.py --noanalyze
 
 # Stop capture: Ctrl+C
 ```
 
-The script captures all sensor readings with timestamps. Sensors report every ~500ms.
+The script captures all sensor readings with timestamps. Sensors report every ~500ms. **By default, analysis runs automatically when you stop the capture** unless you use the `--noanalyze` flag.
 
 ### Analyzing Sensor Data
 
-Analyze captured data to understand noise patterns and sensor behavior:
+The analysis runs automatically after capture, but you can also run it manually:
 
 ```bash
-# Analyze a capture file
+# Manually analyze a capture file
 uv run analyzeSensors.py data/sensor_data_20251021_221902.csv
 ```
 

@@ -7,14 +7,17 @@ to a CSV file with timestamps. The sensors are HC-SR501 PIR sensors configured
 for digital reads (0 or 1).
 
 Usage:
-    uv run captureSensors.py [output_file]
+    uv run captureSensors.py [output_file] [--noanalyze]
 
     Default output: data/sensor_data_YYYYMMDD_HHMMSS.csv
+    --noanalyze: Skip automatic analysis after capture
 
 To stop capture: Ctrl+C
 
 The output CSV format is:
     timestamp,device_id,device_name,sensor_value
+
+After capture stops, analyzeSensors.py will automatically run unless --noanalyze is specified.
 """
 
 import paho.mqtt.client as mqtt
@@ -24,18 +27,16 @@ import sys
 import csv
 from datetime import datetime
 import signal
+import subprocess
 
 # Sensor definitions with friendly names
 SENSORS = {
     "60:55:F9:7B:98:14": "1-door",
-    "60:55:F9:7B:63:88": "2-witches",
-    "60:55:F9:7B:5F:2C": "3-mask-wall",
-    "54:32:04:46:61:88": "4-coffin",
-    "60:55:F9:7B:60:BC": "5-bubba-garage-door",
-    "60:55:F9:7B:7F:98": "6-creepy-window",
-    "60:55:F9:7B:82:40": "7-werewolf-rear",
-    "60:55:F9:7B:7B:60": "8-werewolf-front",
-    "60:55:F9:7B:82:30": "9-scarecrow",
+    "60:55:F9:7B:5F:2C": "2-witches",
+    "54:32:04:46:61:88": "3-coffin",
+    "60:55:F9:7B:60:BC": "4-bubba",
+    "60:55:F9:7B:7B:60": "5-werewolf-front",
+    "60:55:F9:7B:82:30": "6-scarecrow",
 }
 
 # MQTT broker configuration
@@ -47,6 +48,8 @@ csv_writer = None
 csv_file = None
 message_count = 0
 start_time = None
+run_analysis = True
+output_filename = None
 
 
 def on_connect(client, userdata, flags, rc, properties=None):
@@ -103,6 +106,8 @@ def on_message(client, userdata, message, properties=None):
 
 def signal_handler(sig, frame):
     """Handle Ctrl+C gracefully."""
+    global output_filename
+
     print("\n" + "-" * 60)
     print(f"\nCapture stopped. Total messages captured: {message_count}")
 
@@ -113,13 +118,25 @@ def signal_handler(sig, frame):
 
     if csv_file:
         print(f"\nData saved to: {csv_file.name}")
+        output_filename = csv_file.name
         csv_file.close()
+
+    # Run analysis unless --noanalyze was specified
+    if run_analysis and output_filename and message_count > 0:
+        print("\n" + "=" * 60)
+        print("Running automatic analysis...")
+        print("=" * 60)
+        try:
+            subprocess.run(["uv", "run", "analyzeSensors.py", output_filename])
+        except Exception as e:
+            print(f"Error running analysis: {e}")
+            print(f"You can manually run: uv run analyzeSensors.py {output_filename}")
 
     sys.exit(0)
 
 
 def main():
-    global csv_writer, csv_file, start_time
+    global csv_writer, csv_file, start_time, run_analysis, output_filename
 
     # Set up signal handler for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
@@ -128,9 +145,17 @@ def main():
     import os
     os.makedirs('data', exist_ok=True)
 
+    # Parse command line arguments
+    args = [arg for arg in sys.argv[1:] if not arg.startswith('--')]
+    flags = [arg for arg in sys.argv[1:] if arg.startswith('--')]
+
+    # Check for --noanalyze flag
+    if '--noanalyze' in flags:
+        run_analysis = False
+
     # Determine output filename
-    if len(sys.argv) > 1:
-        output_filename = sys.argv[1]
+    if len(args) > 0:
+        output_filename = args[0]
     else:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_filename = f"data/sensor_data_{timestamp}.csv"
