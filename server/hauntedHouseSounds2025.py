@@ -20,18 +20,22 @@ from paho.mqtt.client import CallbackAPIVersion
 AUDIO_DEVICE = "UMC1820"  # Audio device name
 COFFIN_SOUND_FILE = "sound/witch-laugh-189108.mp3"  # Change this to switch sounds
 COFFIN_SPEAKER_CHANNEL = 4  # Speaker channel for coffin
+BUBBA_SOUND_FILE = "sound/thunderclap-377254.mp3"  # Change this to switch sounds
+BUBBA_SPEAKER_CHANNELS = [1, 2, 3, 4, 5]  # Play on all speakers
 
 # Constants for device names
 PROP3 = "54:32:04:46:61:88" # COFFIN SENSOR
+PROP4 = "60:55:F9:7B:60:BC" # BUBBA SENSOR
 
 SENSOR_THRESHOLD = 0
 COOLDOWN_SECONDS = 10  # Minimum time between runs for each prop
 prop_active = False  # Track if any prop is currently running
-last_run_time = {PROP3: 0}  # Track last run time for each prop
+last_run_time = {PROP3: 0, PROP4: 0}  # Track last run time for each prop
 
 # Dictionary to store lists for each device
 queues = {
-    PROP3: []
+    PROP3: [],
+    PROP4: []
 }
 
 # Define MQTT parameters
@@ -93,6 +97,52 @@ def play_sound_on_channel(audio_file, channel, device_name):
     duration = len(samples) / sample_rate
     log(f"Playing {audio_file} on channel {channel} ({duration:.2f}s)")
 
+def play_sound_on_multiple_channels(audio_file, channels, device_name):
+    """
+    Play an audio file on multiple channels simultaneously.
+    Stops any currently playing audio first.
+    """
+    # Stop any currently playing audio
+    sd.stop()
+
+    # Find device
+    device_idx = find_device_by_name(device_name)
+    if device_idx is None:
+        log(f"Error: Audio device '{device_name}' not found")
+        return
+
+    device_info = sd.query_devices(device_idx)
+    max_channels = device_info['max_output_channels']
+
+    # Validate all channels
+    for channel in channels:
+        if channel < 1 or channel > max_channels:
+            log(f"Error: Channel {channel} out of range (1-{max_channels})")
+            return
+
+    # Load audio file
+    data, sample_rate = sf.read(audio_file, dtype='float32')
+
+    # Handle stereo/mono - mix to mono
+    if len(data.shape) == 2:  # Stereo
+        samples = data.mean(axis=1)
+    else:  # Mono
+        samples = data
+
+    # Create multi-channel output array
+    output = np.zeros((len(samples), max_channels), dtype=np.float32)
+
+    # Add the same audio to all specified channels
+    for channel in channels:
+        output[:, channel - 1] = samples  # channel-1 for 0-indexed
+
+    # Play audio in the background (non-blocking)
+    sd.play(output, samplerate=sample_rate, device=device_idx)
+
+    duration = len(samples) / sample_rate
+    channel_str = ', '.join(map(str, channels))
+    log(f"Playing {audio_file} on channels {channel_str} ({duration:.2f}s)")
+
 # Function to handle MQTT messages
 def on_message(client, userdata, message, properties=None):
     device_id = message.topic.split("/")[1]  # Extract device ID from the topic
@@ -139,6 +189,40 @@ async def process_queue_PROP3():
                 prop_active = False
 
 
+# BUBBA
+async def process_queue_PROP4():
+    global prop_active
+    while True:
+        await asyncio.sleep(0.3)
+        if len(queues[PROP4]) >= 2:
+            # Copy the queue and keep the last message for next cycle
+            messages = queues[PROP4][:]
+            queues[PROP4] = [messages[-1]]  # Keep last message to check consecutive across cycles
+
+            payloads = [int(message.payload.decode()) for message in messages]  # Extract payloads as integers
+            log(f"PROP4 Payloads: {payloads}  # BUBBA")
+
+            # Check for two consecutive payloads > SENSOR_THRESHOLD
+            consecutive_high = False
+            for i in range(len(payloads) - 1):
+                if payloads[i] > SENSOR_THRESHOLD and payloads[i + 1] > SENSOR_THRESHOLD:
+                    consecutive_high = True
+                    break
+
+            # Check cooldown and prop_active before triggering
+            current_time = time.time()
+            time_since_last_run = current_time - last_run_time[PROP4]
+            if consecutive_high and not prop_active and time_since_last_run >= COOLDOWN_SECONDS:
+                prop_active = True
+                last_run_time[PROP4] = current_time
+                log("BUBBA triggered")
+                # Play sound on all speaker channels
+                play_sound_on_multiple_channels(BUBBA_SOUND_FILE, BUBBA_SPEAKER_CHANNELS, AUDIO_DEVICE)
+                await asyncio.sleep(10)  # Delay after running the prop
+                queues[PROP4] = []  # Clear all events that came in during the delay
+                prop_active = False
+
+
 # Define the event loop
 async def event_loop():
     while True:
@@ -154,6 +238,7 @@ if __name__ == "__main__":
     asyncio.set_event_loop(loop)
     loop.create_task(event_loop())
     loop.create_task(process_queue_PROP3())
+    loop.create_task(process_queue_PROP4())
 
     client.loop_start()
     loop.run_forever()
