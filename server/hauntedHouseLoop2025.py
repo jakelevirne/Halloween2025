@@ -17,10 +17,10 @@ PROP6 = "60:55:F9:7B:82:30" # SCARECROW SENSOR
 PROP7 = "54:32:04:46:61:40" # COFFIN ACTUATOR
 
 SENSOR_THRESHOLD = 0
-COOLDOWN_SECONDS = 120  # Minimum time between runs for each prop
+COOLDOWN_SECONDS = 80  # Minimum time between runs for each prop
 fogFlipper = True
 prop_active = False  # Track if any prop is currently running
-last_run_time = {PROP5: 0, PROP6: 0}  # Track last run time for each prop
+last_run_time = {PROP3: 0, PROP5: 0, PROP6: 0}  # Track last run time for each prop
 
 # Dictionary to store lists for each device
 queues = {
@@ -57,6 +57,38 @@ def on_message(client, userdata, message, properties=None):
 for device_id in queues:
     client.subscribe(f"device/{device_id}/sensor")  # Updated topic for subscription
 client.on_message = on_message
+
+
+# COFFIN
+async def process_queue_PROP3():
+    global prop_active
+    while True:
+        await asyncio.sleep(0.3)
+        if len(queues[PROP3]) >= 2:
+            # Copy the queue and keep the last message for next cycle
+            messages = queues[PROP3][:]
+            queues[PROP3] = [messages[-1]]  # Keep last message to check consecutive across cycles
+
+            payloads = [int(message.payload.decode()) for message in messages]  # Extract payloads as integers
+            log(f"PROP3 Payloads: {payloads}  # COFFIN")
+
+            # Check for two consecutive payloads > SENSOR_THRESHOLD
+            consecutive_high = False
+            for i in range(len(payloads) - 1):
+                if payloads[i] > SENSOR_THRESHOLD and payloads[i + 1] > SENSOR_THRESHOLD:
+                    consecutive_high = True
+                    break
+
+            # Check cooldown and prop_active before triggering
+            current_time = time.time()
+            time_since_last_run = current_time - last_run_time[PROP3]
+            if consecutive_high and not prop_active and time_since_last_run >= COOLDOWN_SECONDS:
+                prop_active = True
+                last_run_time[PROP3] = current_time
+                publish_event(f"device/{PROP7}/actuator", "X10")  # Publish to PROP7 (coffin actuator)
+                await asyncio.sleep(10)  # Delay after running the prop
+                queues[PROP3] = []  # Clear all events that came in during the delay
+                prop_active = False
 
 
 # WEREWOLF
@@ -137,6 +169,7 @@ if __name__ == "__main__":
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.create_task(event_loop())
+    loop.create_task(process_queue_PROP3())
     loop.create_task(process_queue_PROP5())
     loop.create_task(process_queue_PROP6())
     client.loop_start()
