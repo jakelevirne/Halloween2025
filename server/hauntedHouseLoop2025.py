@@ -17,7 +17,7 @@ PROP6 = "60:55:F9:7B:82:30" # SCARECROW SENSOR
 PROP7 = "54:32:04:46:61:40" # COFFIN ACTUATOR
 
 SENSOR_THRESHOLD = 0
-COOLDOWN_SECONDS = 80  # Minimum time between runs for each prop
+COOLDOWN_SECONDS = 40  # Minimum time between runs for each prop
 fogFlipper = True
 prop_active = False  # Track if any prop is currently running
 last_run_time = {PROP3: 0, PROP5: 0, PROP6: 0}  # Track last run time for each prop
@@ -114,7 +114,7 @@ async def process_queue_PROP5():
             # Check cooldown and prop_active before triggering
             current_time = time.time()
             time_since_last_run = current_time - last_run_time[PROP5]
-            if consecutive_high and not prop_active and time_since_last_run >= COOLDOWN_SECONDS:
+            if consecutive_high and not prop_active and time_since_last_run >= COOLDOWN_SECONDS+40:
                 prop_active = True
                 last_run_time[PROP5] = current_time
                 publish_event(f"device/{PROP5}/actuator", "X10")  # Publish event when two consecutive readings exceed threshold
