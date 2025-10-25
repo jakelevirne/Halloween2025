@@ -114,10 +114,10 @@ async def process_queue_PROP5():
             # Check cooldown and prop_active before triggering
             current_time = time.time()
             time_since_last_run = current_time - last_run_time[PROP5]
-            if consecutive_high and not prop_active and time_since_last_run >= COOLDOWN_SECONDS+40:
+            if consecutive_high and not prop_active and time_since_last_run >= COOLDOWN_SECONDS+25:
                 prop_active = True
                 last_run_time[PROP5] = current_time
-                publish_event(f"device/{PROP5}/actuator", "X10")  # Publish event when two consecutive readings exceed threshold
+                publish_event(f"device/{PROP5}/actuator", "X20")  # Publish event when two consecutive readings exceed threshold
                 await asyncio.sleep(10)  # Delay after running the prop
                 queues[PROP5] = []  # Clear all events that came in during the delay
                 prop_active = False
