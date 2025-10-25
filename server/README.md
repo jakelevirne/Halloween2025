@@ -70,9 +70,9 @@ All devices support the following message formats on their `device/{MAC_ADDRESS}
 
 **Sequence Example:**
 ```bash
-# Coffin pattern: quick flashes followed by long pause
+# Coffin pattern: three quick flashes
 mosquitto_pub -h 192.168.86.2 -t "device/54:32:04:46:61:88/actuator" \
-  -m "S300,500,300,500,300,7000"
+  -m "S300,500,300,500,300"
 ```
 
 This produces:
@@ -81,8 +81,9 @@ This produces:
 - HIGH for 300ms
 - LOW for 500ms
 - HIGH for 300ms
-- LOW for 7000ms (7 seconds)
-- Then stops in LOW state
+- Then immediately stops in LOW state
+
+**Note:** Sequences typically use an odd number of durations since the final state is always LOW. The last duration should be a HIGH state (just before the automatic LOW), as there's no benefit to ending with a long LOW duration.
 
 ## Sensor Data Capture & Analysis
 
