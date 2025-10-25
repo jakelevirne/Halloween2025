@@ -18,6 +18,13 @@ from paho.mqtt.client import CallbackAPIVersion
 
 # ===== AUDIO CONFIGURATION =====
 AUDIO_DEVICE = "UMC1820"  # Audio device name
+DOOR_SOUNDS = [
+    ("sound/2025/1_Speaker1.mp3", 1),
+    ("sound/2025/1_Speaker2.mp3", 2),
+    ("sound/2025/1_Speaker3.mp3", 3),
+    ("sound/2025/1_Speaker4.mp3", 4),
+    ("sound/2025/1_Speaker5.mp3", 5),
+]
 WITCHES_SOUNDS = [
     ("sound/2025/2_Speaker1.mp3", 1),
     ("sound/2025/2_Speaker2.mp3", 2),
@@ -48,6 +55,7 @@ SCARECROW_SOUNDS = [
 ]
 
 # Constants for device names
+PROP1 = "60:55:F9:7B:82:40" # DOOR SENSOR
 PROP2 = "60:55:F9:7B:5F:2C" # WITCHES AREA SENSOR
 PROP3 = "54:32:04:46:61:88" # COFFIN SENSOR
 PROP4 = "60:55:F9:7B:60:BC" # BUBBA SENSOR
@@ -57,10 +65,11 @@ SENSOR_THRESHOLD = 0
 COOLDOWN_SECONDS = 10  # Minimum time between runs for each prop
 MIN_SOUND_PLAY_TIME = 5  # Minimum seconds a sound must play before being interrupted
 sound_started_time = 0  # Track when current sound started playing
-last_run_time = {PROP2: 0, PROP3: 0, PROP4: 0, PROP6: 0}  # Track last run time for each prop
+last_run_time = {PROP1: 0, PROP2: 0, PROP3: 0, PROP4: 0, PROP6: 0}  # Track last run time for each prop
 
 # Dictionary to store lists for each device
 queues = {
+    PROP1: [],
     PROP2: [],
     PROP3: [],
     PROP4: [],
@@ -280,6 +289,41 @@ for device_id in queues:
 client.on_message = on_message
 
 
+# DOOR
+async def process_queue_PROP1():
+    global sound_started_time
+    while True:
+        await asyncio.sleep(0.3)
+        if len(queues[PROP1]) >= 2:
+            # Copy the queue and keep the last message for next cycle
+            messages = queues[PROP1][:]
+            queues[PROP1] = [messages[-1]]  # Keep last message to check consecutive across cycles
+
+            payloads = [int(message.payload.decode()) for message in messages]  # Extract payloads as integers
+            log(f"PROP1 Payloads: {payloads}  # DOOR")
+
+            # Check for two consecutive payloads > SENSOR_THRESHOLD
+            consecutive_high = False
+            for i in range(len(payloads) - 1):
+                if payloads[i] > SENSOR_THRESHOLD and payloads[i + 1] > SENSOR_THRESHOLD:
+                    consecutive_high = True
+                    break
+
+            # Check cooldown and if current sound has played long enough
+            current_time = time.time()
+            time_since_last_run = current_time - last_run_time[PROP1]
+            time_since_sound_started = current_time - sound_started_time
+
+            if consecutive_high and time_since_last_run >= COOLDOWN_SECONDS and time_since_sound_started >= MIN_SOUND_PLAY_TIME:
+                last_run_time[PROP1] = current_time
+                sound_started_time = current_time
+                log("DOOR triggered")
+                # Play different sounds on each speaker channel
+                play_different_sounds_on_channels(DOOR_SOUNDS, AUDIO_DEVICE)
+                await asyncio.sleep(10)  # Delay after running the prop
+                queues[PROP1] = []  # Clear all events that came in during the delay
+
+
 # WITCHES
 async def process_queue_PROP2():
     global sound_started_time
@@ -434,6 +478,7 @@ if __name__ == "__main__":
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.create_task(event_loop())
+    loop.create_task(process_queue_PROP1())
     loop.create_task(process_queue_PROP2())
     loop.create_task(process_queue_PROP3())
     loop.create_task(process_queue_PROP4())
