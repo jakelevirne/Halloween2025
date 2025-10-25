@@ -20,8 +20,13 @@ from paho.mqtt.client import CallbackAPIVersion
 AUDIO_DEVICE = "UMC1820"  # Audio device name
 COFFIN_SOUND_FILE = "sound/witch-laugh-189108.mp3"  # Change this to switch sounds
 COFFIN_SPEAKER_CHANNEL = 4  # Speaker channel for coffin
-BUBBA_SOUND_FILE = "sound/thunderclap-377254.mp3"  # Change this to switch sounds
-BUBBA_SPEAKER_CHANNELS = [1, 2, 3, 4, 5]  # Play on all speakers
+BUBBA_SOUNDS = [
+    ("sound/2025/4_Speaker1.mp3", 1),
+    ("sound/2025/4_Speaker2.mp3", 2),
+    ("sound/2025/4_Speaker3.mp3", 3),
+    ("sound/2025/4_Speaker4.mp3", 4),
+    ("sound/2025/4_Speaker5.mp3", 5),
+]
 SCARECROW_SOUND_FILE = "sound/034046_crows-howling-graveyard-lo-fi-cassette-39little-town39-russia-920526flac-62614.mp3"
 SCARECROW_SPEAKER_CHANNELS = [1, 2, 3, 4, 5]  # Play on all speakers
 
@@ -148,6 +153,102 @@ def play_sound_on_multiple_channels(audio_file, channels, device_name):
     channel_str = ', '.join(map(str, channels))
     log(f"Playing {audio_file} on channels {channel_str} ({duration:.2f}s)")
 
+def play_different_sounds_on_channels(audio_specs, device_name):
+    """
+    Play different audio files on different channels simultaneously.
+    Stops any currently playing audio first.
+
+    Args:
+        audio_specs: List of (audio_file, channel) tuples
+        device_name: Audio device name
+    """
+    # Stop any currently playing audio
+    sd.stop()
+
+    # Find device
+    device_idx = find_device_by_name(device_name)
+    if device_idx is None:
+        log(f"Error: Audio device '{device_name}' not found")
+        return
+
+    device_info = sd.query_devices(device_idx)
+    max_channels = device_info['max_output_channels']
+
+    # Load all audio files
+    loaded_audio = []
+    max_sample_rate = 0
+    max_length = 0
+
+    for audio_file, channel in audio_specs:
+        if channel < 1 or channel > max_channels:
+            log(f"Error: Channel {channel} out of range (1-{max_channels})")
+            return
+
+        try:
+            # Load audio file
+            data, sample_rate = sf.read(audio_file, dtype='float32')
+
+            # Handle stereo/mono - mix to mono
+            if len(data.shape) == 2:  # Stereo
+                samples = data.mean(axis=1)
+            else:  # Mono
+                samples = data
+
+            loaded_audio.append({
+                'samples': samples,
+                'sample_rate': sample_rate,
+                'channel': channel,
+                'file': audio_file
+            })
+
+            max_sample_rate = max(max_sample_rate, sample_rate)
+            max_length = max(max_length, len(samples))
+
+        except Exception as e:
+            log(f"Error loading {audio_file}: {e}")
+            return
+
+    if not loaded_audio:
+        log("Error: No audio files loaded successfully")
+        return
+
+    # Resample all audio to the highest sample rate if needed
+    for audio in loaded_audio:
+        if audio['sample_rate'] != max_sample_rate:
+            ratio = max_sample_rate / audio['sample_rate']
+            new_length = int(len(audio['samples']) * ratio)
+            audio['samples'] = np.interp(
+                np.linspace(0, len(audio['samples']) - 1, new_length),
+                np.arange(len(audio['samples'])),
+                audio['samples']
+            )
+            audio['sample_rate'] = max_sample_rate
+            max_length = max(max_length, len(audio['samples']))
+
+    # Create multi-channel output array
+    output = np.zeros((max_length, max_channels), dtype=np.float32)
+
+    # Mix each audio file into its designated channel
+    for audio in loaded_audio:
+        channel_idx = audio['channel'] - 1  # Convert to 0-indexed
+        samples = audio['samples']
+
+        # Pad with silence if shorter than max_length
+        if len(samples) < max_length:
+            padded = np.zeros(max_length, dtype=np.float32)
+            padded[:len(samples)] = samples
+            samples = padded
+
+        # Add to the output channel
+        output[:, channel_idx] = samples
+
+    # Play audio in the background (non-blocking)
+    sd.play(output, samplerate=max_sample_rate, device=device_idx)
+
+    duration = max_length / max_sample_rate
+    channel_str = ', '.join(str(ch) for _, ch in audio_specs)
+    log(f"Playing {len(audio_specs)} sounds on channels {channel_str} ({duration:.2f}s)")
+
 # Function to handle MQTT messages
 def on_message(client, userdata, message, properties=None):
     device_id = message.topic.split("/")[1]  # Extract device ID from the topic
@@ -224,8 +325,8 @@ async def process_queue_PROP4():
                 last_run_time[PROP4] = current_time
                 sound_started_time = current_time
                 log("BUBBA triggered")
-                # Play sound on all speaker channels
-                play_sound_on_multiple_channels(BUBBA_SOUND_FILE, BUBBA_SPEAKER_CHANNELS, AUDIO_DEVICE)
+                # Play different sounds on each speaker channel
+                play_different_sounds_on_channels(BUBBA_SOUNDS, AUDIO_DEVICE)
                 await asyncio.sleep(10)  # Delay after running the prop
                 queues[PROP4] = []  # Clear all events that came in during the delay
 
